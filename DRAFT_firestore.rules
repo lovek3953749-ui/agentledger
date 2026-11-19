@@ -1,0 +1,225 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny all paths unless explicitly permitted
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isValidFramework(fw) {
+      return fw in ['n8n', 'LangGraph', 'CrewAI', 'Google ADK', 'OpenAI Agents SDK', 'custom Python'];
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'photoUrl', 'createdAt', 'updatedAt'])
+        && data.uid is string
+        && data.uid.size() >= 1
+        && data.uid.size() <= 128
+        && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 100
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 254
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAgent(data) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'purpose', 'framework',
+          'latestVersionTag', 'versionCount', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'name', 'purpose', 'framework',
+          'latestVersionTag', 'versionCount', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId.size() >= 1
+        && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 80
+        && data.purpose is string
+        && data.purpose.size() >= 1
+        && data.purpose.size() <= 400
+        && data.framework is string
+        && data.framework.size() >= 1
+        && data.framework.size() <= 40
+        && isValidFramework(data.framework)
+        && data.latestVersionTag is string
+        && data.latestVersionTag.size() >= 2
+        && data.latestVersionTag.size() <= 24
+        && data.latestVersionTag.matches('^v[0-9]+(\\.[0-9]+){0,2}$')
+        && data.versionCount is int
+        && data.versionCount >= 0
+        && data.versionCount <= 1000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAgentVersion(data, agentId) {
+      return data.keys().hasAll([
+          'ownerId', 'agentId', 'versionTag', 'versionNumber', 'releaseDate',
+          'changelog', 'promptChanges', 'systemPrompt', 'toolChanges', 'tools',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'agentId', 'versionTag', 'versionNumber', 'releaseDate',
+          'changelog', 'promptChanges', 'systemPrompt', 'toolChanges', 'tools',
+          'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId.size() >= 1
+        && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.agentId is string
+        && data.agentId.size() >= 1
+        && data.agentId.size() <= 128
+        && data.agentId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.agentId == agentId
+        && data.versionTag is string
+        && data.versionTag.size() >= 2
+        && data.versionTag.size() <= 24
+        && data.versionTag.matches('^v[0-9]+(\\.[0-9]+){0,2}$')
+        && data.versionNumber is int
+        && data.versionNumber >= 1
+        && data.versionNumber <= 10000
+        && data.releaseDate is string
+        && data.releaseDate.size() == 10
+        && data.releaseDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.changelog is string
+        && data.changelog.size() >= 1
+        && data.changelog.size() <= 1000
+        && data.promptChanges is string
+        && data.promptChanges.size() >= 1
+        && data.promptChanges.size() <= 2000
+        && data.systemPrompt is string
+        && data.systemPrompt.size() <= 8000
+        && data.toolChanges is string
+        && data.toolChanges.size() >= 1
+        && data.toolChanges.size() <= 2000
+        && data.tools is list
+        && data.tools.size() <= 20
+        && (data.tools.size() == 0 || (data.tools[0] is string && data.tools[0].size() <= 120))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // 1. User Profiles (PII Isolated to Owner Only)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && userId == request.auth.uid;
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidId(userId)
+        && userId == request.auth.uid
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && userId == request.auth.uid
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoUrl', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // 2. Agents (Scoped strictly to ownerId)
+    match /agents/{agentId} {
+      allow get: if isSignedIn()
+        && isValidId(agentId)
+        && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn()
+        && isValidId(agentId)
+        && isValidAgent(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(agentId)
+        && isValidAgent(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'purpose', 'framework', 'updatedAt'])
+          || incoming().diff(existing()).affectedKeys().hasOnly(['latestVersionTag', 'versionCount', 'updatedAt'])
+        );
+      allow delete: if isSignedIn()
+        && isValidId(agentId)
+        && existing().ownerId == request.auth.uid;
+
+      // 3. Agent Versions Subcollection (Master Gate + Owner Sync)
+      match /versions/{versionId} {
+        allow get: if isSignedIn()
+          && isValidId(agentId)
+          && isValidId(versionId)
+          && existing().ownerId == request.auth.uid
+          && get(/databases/$(database)/documents/agents/$(agentId)).data.ownerId == request.auth.uid;
+        allow list: if isSignedIn()
+          && resource.data.ownerId == request.auth.uid;
+        allow create: if isSignedIn()
+          && isValidId(agentId)
+          && isValidId(versionId)
+          && isValidAgentVersion(incoming(), agentId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && existsAfter(/databases/$(database)/documents/agents/$(agentId))
+          && getAfter(/databases/$(database)/documents/agents/$(agentId)).data.ownerId == request.auth.uid;
+        allow update: if isSignedIn()
+          && isValidId(agentId)
+          && isValidId(versionId)
+          && isValidAgentVersion(incoming(), agentId)
+          && existing().ownerId == request.auth.uid
+          && incoming().ownerId == existing().ownerId
+          && incoming().agentId == existing().agentId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && get(/databases/$(database)/documents/agents/$(agentId)).data.ownerId == request.auth.uid
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'versionTag', 'versionNumber', 'releaseDate', 'changelog',
+            'promptChanges', 'systemPrompt', 'toolChanges', 'tools', 'updatedAt'
+          ]);
+        allow delete: if isSignedIn()
+          && isValidId(agentId)
+          && isValidId(versionId)
+          && existing().ownerId == request.auth.uid
+          && get(/databases/$(database)/documents/agents/$(agentId)).data.ownerId == request.auth.uid;
+      }
+    }
+  }
+}

@@ -1,0 +1,220 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user account profile isolated to the authenticated owner.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID matching the document ID."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "User display name."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 254,
+          "description": "Verified user email address."
+        },
+        "photoUrl": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Optional profile avatar URL."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": ["uid", "displayName", "email", "createdAt", "updatedAt"]
+    },
+    "Agent": {
+      "title": "Agent",
+      "description": "An AI agent tracked by a user with framework metadata and version counters.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the user who owns this agent."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Human-readable name of the AI agent."
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400,
+          "description": "Concise description of the agent's objective and scope."
+        },
+        "framework": {
+          "type": "string",
+          "enum": [
+            "n8n",
+            "LangGraph",
+            "CrewAI",
+            "Google ADK",
+            "OpenAI Agents SDK",
+            "custom Python"
+          ],
+          "description": "Orchestration framework used to build the agent."
+        },
+        "latestVersionTag": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 24,
+          "pattern": "^v[0-9]+(\\.[0-9]+){0,2}$",
+          "description": "Latest version identifier (e.g., v0, v1, v2, v3)."
+        },
+        "versionCount": {
+          "type": "integer",
+          "description": "Total number of recorded versions for this agent."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "purpose",
+        "framework",
+        "latestVersionTag",
+        "versionCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AgentVersion": {
+      "title": "AgentVersion",
+      "description": "A versioned release of an AI agent with changelog, release date, and prompt/tool changes.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the owning user, matching the parent agent."
+        },
+        "agentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Parent agent document ID."
+        },
+        "versionTag": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 24,
+          "pattern": "^v[0-9]+(\\.[0-9]+){0,2}$",
+          "description": "Version tag such as v1, v2, v3."
+        },
+        "versionNumber": {
+          "type": "integer",
+          "description": "Monotonic numeric ordering index for versions."
+        },
+        "releaseDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "ISO date YYYY-MM-DD of the version release."
+        },
+        "changelog": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "Summary of changes introduced in this version."
+        },
+        "promptChanges": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "Description of prompt modifications made in this version."
+        },
+        "systemPrompt": {
+          "type": "string",
+          "maxLength": 8000,
+          "description": "Full system prompt snapshot for this version."
+        },
+        "toolChanges": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "Description of tool additions, modifications, or removals."
+        },
+        "tools": {
+          "type": "array",
+          "description": "Bounded list (max 20) of active tool identifiers or change labels."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "agentId",
+        "versionTag",
+        "versionNumber",
+        "releaseDate",
+        "changelog",
+        "promptChanges",
+        "systemPrompt",
+        "toolChanges",
+        "tools",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profiles readable and writable only by the owner."
+    },
+    "/agents/{agentId}": {
+      "schema": { "$ref": "#/entities/Agent" },
+      "description": "Top-level collection of AI agents scoped by ownerId."
+    },
+    "/agents/{agentId}/versions/{versionId}": {
+      "schema": { "$ref": "#/entities/AgentVersion" },
+      "description": "Subcollection of immutable-owner agent versions belonging to a parent agent."
+    }
+  }
+}

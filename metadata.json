@@ -1,0 +1,6 @@
+{
+  "name": "AgentLedger",
+  "description": "Track AI agents, frameworks, and versioned prompt and tool changelogs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
